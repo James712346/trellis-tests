@@ -1,0 +1,29 @@
+{
+  "TINY": {
+    "config": {
+      "grid_width": 16,
+      "grid_height": 9,
+      "num_buckets": 4,
+      "num_textures": 2,
+      "num_cases": 7,
+      "max_spatial_dist": 1,
+      "max_intensity_diff": 1,
+      "max_texture_diff": 1,
+      "description": "Quick test configuration"
+    },
+    "stats": {
+      "num_positions": 144,
+      "total_states": 1152,
+      "dense_entries": 1327104,
+      "dense_size_gb": 0.0098876953125,
+      "sparse_entries": 10368,
+      "sparsity": 99.21875,
+      "avg_predecessors": 9,
+      "max_spatial_dist": 1,
+      "max_intensity_diff": 1,
+      "max_texture_diff": 1
+    },
+    "file": "./models/tiny/image_hmm.trellis",
+    "compilation": null
+  }
+}

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: trellis-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Default admin credentials
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Allow installing unsigned plugins
+      - GF_INSTALL_PLUGINS=frser-sqlite-datasource
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=frser-sqlite-datasource
+      # Server settings
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_LOG_LEVEL=info
+    volumes:
+      # Persist Grafana data
+      - grafana-storage:/var/lib/grafana
+      # Mount metrics database (read-only)
+      - ./metrics.db:/var/lib/grafana/metrics/metrics.db:ro
+      # Mount entire metrics directory if you have multiple DBs
+      # - ./:/var/lib/grafana/metrics:ro
+      # Auto-provision datasource
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources
+      # Auto-provision dashboard
+      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboards:/var/lib/grafana/dashboards
+    networks:
+      - grafana-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  grafana-storage:
+    name: trellis-grafana-storage
+
+networks:
+  grafana-net:
+    name: trellis-grafana-network

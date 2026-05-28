@@ -1,0 +1,12 @@
+# provisioning/datasources/sqlite.yml
+apiVersion: 1
+
+datasources:
+  - name: Trellis Metrics
+    type: frser-sqlite-datasource
+    access: proxy
+    isDefault: true
+    editable: true
+    jsonData:
+      path: /var/lib/grafana/metrics/metrics.db
+    version: 1

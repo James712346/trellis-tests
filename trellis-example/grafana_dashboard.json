@@ -1,0 +1,404 @@
+{
+  "dashboard": {
+    "title": "Trellis HMM Performance Dashboard",
+    "tags": ["trellis", "hmm", "gpu", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "5s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "row",
+        "title": "Run Overview",
+        "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "type": "table",
+        "title": "Recent Runs",
+        "gridPos": { "x": 0, "y": 1, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  id,\n  config_name,\n  mode,\n  status,\n  start_ts,\n  end_ts,\n  ROUND(duration_seconds, 2) as duration_sec,\n  total_states,\n  grid_width || 'x' || grid_height as grid_size,\n  num_buckets,\n  num_textures,\n  CASE WHEN warmup_enabled = 1 THEN 'Yes' ELSE 'No' END as warmup,\n  notes\nFROM runs\nORDER BY start_ts DESC\nLIMIT 20",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [{ "displayName": "start_ts", "desc": true }]
+        },
+        "fieldConfig": {
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "status" },
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "mappings",
+                  "value": [
+                    { "type": "value", "options": { "completed": { "color": "green" } } },
+                    { "type": "value", "options": { "failed": { "color": "red" } } },
+                    { "type": "value", "options": { "running": { "color": "yellow" } } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "type": "row",
+        "title": "Algorithm Performance",
+        "gridPos": { "x": 0, "y": 7, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 4,
+        "type": "timeseries",
+        "title": "Algorithm Execution Time by Config",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ar.start_ts) as time,\n  ar.duration_seconds as value,\n  r.config_name || ' - ' || ar.algorithm as metric\nFROM algorithm_runs ar\nJOIN test_sessions ts ON ar.test_session_id = ts.id\nJOIN runs r ON ts.run_id = r.id\nWHERE ar.status = 'completed'\n  AND ar.start_ts >= datetime('now', '-1 hour')\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars",
+              "lineInterpolation": "linear",
+              "barAlignment": 0,
+              "fillOpacity": 80,
+              "gradientMode": "none",
+              "showPoints": "never",
+              "axisPlacement": "auto"
+            },
+            "color": { "mode": "palette-classic" },
+            "unit": "s"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi", "sort": "none" },
+          "legend": { "showLegend": true, "displayMode": "table", "placement": "right" }
+        }
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "Sequences Per Second",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ar.start_ts) as time,\n  ar.sequences_per_sec as value,\n  r.config_name || ' - ' || ar.algorithm as metric\nFROM algorithm_runs ar\nJOIN test_sessions ts ON ar.test_session_id = ts.id\nJOIN runs r ON ts.run_id = r.id\nWHERE ar.status = 'completed'\n  AND ar.sequences_per_sec IS NOT NULL\n  AND ar.start_ts >= datetime('now', '-1 hour')\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10,
+              "showPoints": "auto"
+            },
+            "color": { "mode": "palette-classic" },
+            "unit": "seqs/s"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "table", "placement": "right" }
+        }
+      },
+      {
+        "id": 6,
+        "type": "barchart",
+        "title": "Algorithm Performance Comparison",
+        "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  r.config_name || ' - ' || ar.algorithm as category,\n  AVG(ar.duration_seconds) as avg_duration,\n  MIN(ar.duration_seconds) as min_duration,\n  MAX(ar.duration_seconds) as max_duration,\n  AVG(ar.sequences_per_sec) as avg_throughput\nFROM algorithm_runs ar\nJOIN test_sessions ts ON ar.test_session_id = ts.id\nJOIN runs r ON ts.run_id = r.id\nWHERE ar.status = 'completed'\n  AND ar.start_ts >= datetime('now', '-1 hour')\nGROUP BY r.config_name, ar.algorithm\nORDER BY r.config_name, ar.algorithm",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "s" }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "xField": "category",
+          "showValue": "always"
+        }
+      },
+      {
+        "id": 7,
+        "type": "table",
+        "title": "Test Session Details",
+        "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  r.config_name,\n  ts.image_name,\n  ts.image_width || 'x' || ts.image_height as image_size,\n  ts.num_sequences,\n  ts.sequence_method,\n  ROUND(ts.duration_seconds, 2) as duration_sec,\n  ts.start_ts\nFROM test_sessions ts\nJOIN runs r ON ts.run_id = r.id\nWHERE ts.start_ts >= datetime('now', '-1 hour')\nORDER BY ts.start_ts DESC\nLIMIT 50",
+            "format": "table"
+          }
+        ],
+        "options": { "showHeader": true }
+      },
+      {
+        "id": 8,
+        "type": "row",
+        "title": "GPU Metrics",
+        "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 9,
+        "type": "timeseries",
+        "title": "GPU Temperature",
+        "gridPos": { "x": 0, "y": 25, "w": 8, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  temperature_c as value,\n  'GPU ' || gpu_index as metric\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\n  AND temperature_c IS NOT NULL\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 2, "fillOpacity": 10 },
+            "unit": "celsius"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 10,
+        "type": "timeseries",
+        "title": "GPU Utilization",
+        "gridPos": { "x": 8, "y": 25, "w": 8, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  utilization_pct as value,\n  'GPU ' || gpu_index as metric\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\n  AND utilization_pct IS NOT NULL\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 2, "fillOpacity": 20 },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 11,
+        "type": "timeseries",
+        "title": "GPU Memory Usage",
+        "gridPos": { "x": 16, "y": 25, "w": 8, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  memory_used_mb as value,\n  'GPU ' || gpu_index || ' Used' as metric\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\n  AND memory_used_mb IS NOT NULL\nUNION ALL\nSELECT \n  strftime('%s', ts) as time,\n  memory_total_mb as value,\n  'GPU ' || gpu_index || ' Total' as metric\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\n  AND memory_total_mb IS NOT NULL\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 2, "fillOpacity": 0 },
+            "unit": "mbytes"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 12,
+        "type": "timeseries",
+        "title": "GPU Power Draw",
+        "gridPos": { "x": 0, "y": 32, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  power_draw_w as value,\n  'GPU ' || gpu_index as metric\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\n  AND power_draw_w IS NOT NULL\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 2, "fillOpacity": 15 },
+            "unit": "watt"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 13,
+        "type": "stat",
+        "title": "GPU Stats Summary",
+        "gridPos": { "x": 12, "y": 32, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  'GPU ' || gpu_index as metric,\n  AVG(temperature_c) as avg_temp,\n  MAX(temperature_c) as max_temp,\n  AVG(utilization_pct) as avg_util,\n  MAX(utilization_pct) as max_util,\n  AVG(memory_used_mb) as avg_mem,\n  MAX(memory_used_mb) as max_mem\nFROM gpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\nGROUP BY gpu_index",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value"
+        }
+      },
+      {
+        "id": 14,
+        "type": "row",
+        "title": "CPU Metrics",
+        "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 15,
+        "type": "timeseries",
+        "title": "CPU Utilization",
+        "gridPos": { "x": 0, "y": 40, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  cpu_percent as value,\n  'CPU Usage' as metric\nFROM cpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "custom": { "lineWidth": 2, "fillOpacity": 30 },
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 50, "color": "yellow" },
+                { "value": 80, "color": "red" }
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "single" },
+          "legend": { "showLegend": true }
+        }
+      },
+      {
+        "id": 16,
+        "type": "timeseries",
+        "title": "System Memory Usage",
+        "gridPos": { "x": 12, "y": 40, "w": 12, "h": 7 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', ts) as time,\n  mem_used_mb as value,\n  'Used' as metric\nFROM cpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\nUNION ALL\nSELECT \n  strftime('%s', ts) as time,\n  mem_available_mb as value,\n  'Available' as metric\nFROM cpu_metrics\nWHERE ts >= datetime('now', '-15 minutes')\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } },
+            "unit": "mbytes"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 17,
+        "type": "row",
+        "title": "Correlation Analysis",
+        "gridPos": { "x": 0, "y": 47, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 18,
+        "type": "timeseries",
+        "title": "GPU Utilization During Algorithm Execution",
+        "gridPos": { "x": 0, "y": 48, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  strftime('%s', gm.ts) as time,\n  gm.utilization_pct as value,\n  r.config_name || ' - ' || ar.algorithm || ' (GPU ' || gm.gpu_index || ')' as metric\nFROM gpu_metrics gm\nJOIN algorithm_runs ar ON gm.algorithm_run_id = ar.id\nJOIN test_sessions ts ON ar.test_session_id = ts.id\nJOIN runs r ON ts.run_id = r.id\nWHERE gm.ts >= datetime('now', '-30 minutes')\n  AND gm.utilization_pct IS NOT NULL\nORDER BY time",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "palette-classic" },
+            "custom": { "lineWidth": 1, "fillOpacity": 50 },
+            "unit": "percent"
+          }
+        },
+        "options": {
+          "tooltip": { "mode": "multi" },
+          "legend": { "showLegend": true, "displayMode": "table", "placement": "right" }
+        }
+      },
+      {
+        "id": 19,
+        "type": "table",
+        "title": "Performance vs Resource Usage",
+        "gridPos": { "x": 0, "y": 56, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "datasource": { "type": "frser-sqlite-datasource" },
+            "rawSql": "SELECT \n  r.config_name,\n  ar.algorithm,\n  ROUND(ar.duration_seconds, 2) as duration_sec,\n  ROUND(ar.sequences_per_sec, 2) as seqs_per_sec,\n  ROUND(AVG(gm.utilization_pct), 1) as avg_gpu_util,\n  ROUND(MAX(gm.utilization_pct), 1) as max_gpu_util,\n  ROUND(AVG(gm.temperature_c), 1) as avg_temp,\n  ROUND(MAX(gm.temperature_c), 1) as max_temp,\n  ROUND(AVG(gm.power_draw_w), 1) as avg_power_w,\n  ROUND(AVG(cm.cpu_percent), 1) as avg_cpu_pct\nFROM algorithm_runs ar\nJOIN test_sessions ts ON ar.test_session_id = ts.id\nJOIN runs r ON ts.run_id = r.id\nLEFT JOIN gpu_metrics gm ON gm.algorithm_run_id = ar.id\nLEFT JOIN cpu_metrics cm ON cm.algorithm_run_id = ar.id\nWHERE ar.status = 'completed'\n  AND ar.start_ts >= datetime('now', '-1 hour')\nGROUP BY r.config_name, ar.algorithm, ar.id\nORDER BY ar.start_ts DESC",
+            "format": "table"
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [{ "displayName": "duration_sec", "desc": false }]
+        }
+      }
+    ]
+  }
+}

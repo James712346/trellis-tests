@@ -1,0 +1,77 @@
+-- Trellis model for sparse image processing HMM
+-- Uses set constraints to define sparse transition patterns
+-- Based on the Kmer model approach from the Trellis paper
+
+let gridWidth = 48
+let gridHeight = 27
+let numBuckets = 8
+let numTextures = 4
+
+-- Spatial position in grid
+alias Position = 0 .. 1295  -- gridWidth * gridHeight - 1
+
+-- Intensity bucket (0-7 maps to intensity ranges)
+alias IntensityBucket = 0 .. 7
+
+-- Texture type
+alias TextureType = 0 .. 3
+
+-- Pixel intensity observation
+alias Intensity = 0 .. 255
+
+model {
+  -- Compound state: (position, intensity_bucket, texture)
+  state = (Position, IntensityBucket, TextureType)
+  
+  -- Output is pixel intensity
+  output = Intensity
+
+  -- Tables provided at runtime
+  table initialProb(Position, IntensityBucket, TextureType)
+  table emissionProb(Intensity, IntensityBucket)
+  table spatialTrans(Position, Position)
+  table intensityTrans(IntensityBucket, IntensityBucket)
+  table textureTrans(TextureType, TextureType)
+
+  -- Initial probability
+  P(initial x) = initialProb(x[0], x[1], x[2])
+
+  -- Emission probability (depends mainly on intensity bucket)
+  P(output o | x) = emissionProb(o, x[1])
+
+  -- Sparse transition probability using set constraints
+  -- This is where Trellis shines - defining sparse patterns succinctly!
+  P(transition x y) = {
+    -- Case 1: Stay in same position, intensity, and texture
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2, b1 == b2, t1 == t2 } =>
+      spatialTrans(x[0], y[0]) * intensityTrans(x[1], y[1]) * textureTrans(x[2], y[2])
+    
+    -- Case 2: Move to adjacent position (±1 in grid), same intensity/texture
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2 - 1, b1 == b2, t1 == t2 } =>
+      spatialTrans(x[0], y[0]) * 0.8
+    
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2 + 1, b1 == b2, t1 == t2 } =>
+      spatialTrans(x[0], y[0]) * 0.8
+    
+    -- Case 3: Intensity changes by ±1, same position/texture
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2, b1 == b2 - 1, t1 == t2, b2 != 0 } =>
+      intensityTrans(x[1], y[1]) * 0.7
+    
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2, b1 == b2 + 1, t1 == t2, b1 != 7 } =>
+      intensityTrans(x[1], y[1]) * 0.7
+    
+    -- Case 4: Texture changes by ±1, same position/intensity
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2, b1 == b2, t1 == t2 - 1, t2 != 0 } =>
+      textureTrans(x[2], y[2]) * 0.6
+    
+    | { (p1, b1, t1) -> (p2, b2, t2) | 
+        p1 == p2, b1 == b2, t1 == t2 + 1, t1 != 3 } =>
+      textureTrans(x[2], y[2]) * 0.6
+  }
+}
